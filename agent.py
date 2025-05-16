@@ -44,11 +44,20 @@ def preprocess_data(
     ctx: RunContext,
     raw_data_path: str,
     normalize: bool = True,
-    resize: Tuple[int, int] = (64, 64),
+    resize: Tuple[int, int] = (256, 256),
     batch_size: int = 4,
     split_ratio: float = 0.8,
     preprocessed_path: str = "preprocessed_data/noise_images",
 ) -> Dict[str, Tuple[str, str]]:
+
+    print(raw_data_path)
+    print(normalize)
+    print(resize)
+    print(batch_size)
+    print(split_ratio)
+    print(preprocessed_path)
+
+
     inp = PreprocessInput(
         raw_data_path=Path(raw_data_path),
         normalize=normalize,
@@ -66,13 +75,13 @@ def train_model(
     ctx: RunContext,
     train_path: str = "preprocessed_data/noise_images/train_loader.pt",
     test_path: str  = "preprocessed_data/noise_images/test_loader.pt",
-    image_size: Tuple[int, int] = (400, 400),
+    image_size: Tuple[int, int] = (256, 256),
     in_channel: int = 1,
     base_dim: int = 16,
     dim_mults: Tuple[int, int] = (2, 4),
     timesteps: int = 100,
     total_steps_factor: int = 256,
-    max_epochs: int = 100_000,
+    max_epochs: int = 100,
     model_name: str = "model",
 ) -> Dict[str, str]:
     """
@@ -203,8 +212,8 @@ if __name__ == "__main__":
   
 
     result = agent.run_sync(
-        "Hello, please run the function preprocess_data with variables raw_data_path = 'Ellipses_1', preprocessed_path = 'preprocessed_data/one_batch_size', batch_size = 1 and split_ratio = 0.8. ",
-        #"Hello, please run the function train_model with variables train_path = 'preprocessed_data/one_batch_size/train_loader.pt', test_path =  'preprocessed_data/one_batch_size/test_loader.pt', max_epochs = 100 and model_name = model_v3. For the other variables, use the default arguments defined in the function.",
+        "Hello, please run the function preprocess_data with variables raw_data_path = 'data', preprocessed_path = 'preprocessed_data/ellipses', batch_size = 1 and split_ratio = 0.8. If any missing variables in the prompt, run the function with the default values defined in the function definition.",
+        #"Hello, please run the function train_model with variables train_path = 'preprocessed_data/ellipses/train_loader.pt', test_path =  'preprocessed_data/ellipses/test_loader.pt', max_epochs = 10 and model_name = 'model'. run the function with the default values defined in the function definition.",
         #"Hello, please run the function generate_samples with variables n_samples = 4, samples_name = 'new_samples' and model_checkpoint_path: str = 'trained_models/model_v3.ckpt'. ",
         #"Hello, please run the function evaluate_samples with variables train_path = 'preprocessed_data/ellipses/train_loader.pt', test_path = 'preprocessed_data/ellipses/test_loader.pt', evaluate_results_name = 'one_batch_size' and gen_images_path = 'generated_samples/sample_v2.pt, n_test_data = 16 and num_permutations = 1000. ",
         #"Hello, please run the function create_report with variables gen_images_path = 'generated_samples/new_samples.pt', stats_csv = 'Evaluation Results/one_batch_size/perm_stats.csv', plot_png = 'Evaluation Results/one_batch_size/perm_plot.png'.  ",

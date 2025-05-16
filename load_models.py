@@ -6,9 +6,13 @@ from pydantic_ai.providers.openai import OpenAIProvider
 
 
 # Original version. 
-
+#"""
 ollama_model = OpenAIModel(
     model_name='llama3.2', provider=OpenAIProvider(base_url='http://localhost:11434/v1')
 )
-
-
+#"""
+"""
+ollama_model = OpenAIModel(
+ #   model_name='mistral:latest', provider=OpenAIProvider(base_url='http://localhost:11434/v1')
+)
+"""

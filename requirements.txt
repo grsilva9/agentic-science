@@ -1,0 +1,12 @@
+matplotlib==3.10.3
+numpy==2.2.5
+pandas==2.2.3
+Pillow==11.2.1
+pydantic==2.11.4
+pydantic_ai==0.2.4
+pytorch_lightning==2.5.1.post0
+reportlab==4.4.1
+seaborn==0.13.2
+torch==2.7.0
+torchvision==0.22.0
+tqdm==4.67.1

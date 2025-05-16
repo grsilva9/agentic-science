@@ -212,11 +212,11 @@ if __name__ == "__main__":
   
 
     result = agent.run_sync(
-        "Hello, please run the function preprocess_data with variables raw_data_path = 'data', preprocessed_path = 'preprocessed_data/ellipses', batch_size = 1 and split_ratio = 0.8. If any missing variables in the prompt, run the function with the default values defined in the function definition.",
+        #"Hello, please run the function preprocess_data with variables raw_data_path = 'data', preprocessed_path = 'preprocessed_data/ellipses', batch_size = 1 and split_ratio = 0.8. If any missing variables in the prompt, run the function with the default values defined in the function definition.",
         #"Hello, please run the function train_model with variables train_path = 'preprocessed_data/ellipses/train_loader.pt', test_path =  'preprocessed_data/ellipses/test_loader.pt', max_epochs = 10 and model_name = 'model'. run the function with the default values defined in the function definition.",
-        #"Hello, please run the function generate_samples with variables n_samples = 4, samples_name = 'new_samples' and model_checkpoint_path: str = 'trained_models/model_v3.ckpt'. ",
-        #"Hello, please run the function evaluate_samples with variables train_path = 'preprocessed_data/ellipses/train_loader.pt', test_path = 'preprocessed_data/ellipses/test_loader.pt', evaluate_results_name = 'one_batch_size' and gen_images_path = 'generated_samples/sample_v2.pt, n_test_data = 16 and num_permutations = 1000. ",
-        #"Hello, please run the function create_report with variables gen_images_path = 'generated_samples/new_samples.pt', stats_csv = 'Evaluation Results/one_batch_size/perm_stats.csv', plot_png = 'Evaluation Results/one_batch_size/perm_plot.png'.  ",
+        #"Hello, please run the function generate_samples with variables n_samples = 4, samples_name = 'samples' and model_checkpoint_path: str = 'trained_models/model.ckpt'. ",
+        #"Hello, please run the function evaluate_samples with variables train_path = 'preprocessed_data/ellipses/train_loader.pt', test_path = 'preprocessed_data/ellipses/test_loader.pt', evaluate_results_name = 'samples' and gen_images_path = 'generated_samples/samples.pt, n_test_data = 16 and num_permutations = 1000. ",
+        #"Hello, please run the function create_report with variables gen_images_path = 'generated_samples/samples.pt', stats_csv = 'Evaluation Results/samples/perm_stats.csv', plot_png = 'Evaluation Results/samples/perm_plot.png'.  ",
         
         
         

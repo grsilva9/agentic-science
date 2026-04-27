@@ -1,143 +1,200 @@
-import torch
-import pandas as pd
-import matplotlib.pyplot as plt
-from PIL import Image
-import numpy as np
+"""
+Task: Generate a structured PDF report.
+
+Compiles generated images, evaluation statistics, and the permutation-test
+plot into a single PDF using ReportLab. The narrative text can be supplied
+externally (typically by the LLM via the ``write_report_text`` tool) or
+fall back to sensible defaults from ``schemas._DEFAULT_REPORT_TEXT``.
+"""
+
+from __future__ import annotations
+
+import logging
+import math
+import tempfile
 from pathlib import Path
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import torch
 from reportlab.lib import colors
-from schemas import ReportInput, ReportOutput
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Image, Table, TableStyle, Spacer
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet
-import torch
-import math
-from pathlib import Path
-import matplotlib.pyplot as plt
+from reportlab.platypus import (
+    Image as RLImage,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
-#1. Defines report function.
+from schemas import ReportInput, ReportOutput
+
+logger = logging.getLogger(__name__)
+
+_DEFAULT_OUTPUT_DIR = Path("Reports")
+
+
+def _to_display_range(images: torch.Tensor) -> torch.Tensor:
+    """
+    Map images to [0, 1] for visual display.
+
+    The pipeline keeps generated samples in [-1, 1] (model space). For
+    grayscale viewing we shift them. We also clip just in case the model
+    produced slight overshoots.
+    """
+    if images.min() < -0.01:           # likely [-1, 1]
+        return ((images + 1.0) / 2.0).clamp(0.0, 1.0)
+    return images.clamp(0.0, 1.0)
+
+
+def _render_image_grid(
+    images_tensor: torch.Tensor, max_columns: int = 8
+) -> str:
+    """Render a grid of images to a temporary PNG. Returns its path."""
+    images_tensor = _to_display_range(images_tensor.detach().cpu())
+    images = images_tensor.numpy().transpose(0, 2, 3, 1)        # [N, H, W, C]
+    num = len(images)
+    cols = min(max_columns, num)
+    rows = math.ceil(num / cols)
+
+    fig, axes = plt.subplots(rows, cols, figsize=(2 * cols, 2 * rows))
+    axes = np.atleast_2d(axes).flatten() if num > 1 else np.array([axes])
+
+    for i, ax in enumerate(axes):
+        ax.axis("off")
+        if i < num:
+            img = images[i]
+            if img.ndim == 3 and img.shape[2] == 1:
+                img = img.squeeze(-1)
+            ax.imshow(
+                np.clip(img * 255, 0, 255).astype(np.uint8),
+                cmap="gray" if img.ndim == 2 else None,
+            )
+
+    fig.tight_layout(pad=0.5)
+    tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+    fig.savefig(tmp.name, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return tmp.name
+
+
 def report_task(input: ReportInput) -> ReportOutput:
     """
-    Generate a structured PDF report using Platypus with a dynamic image grid.
-    
-    Parameters:
-    - input: Includes image path, table path, plot path, text data, and report name.
-    
-    Returns:
-    - ReportOutput: The path to the generated PDF.
+    Build a structured PDF.
+
+    Sections:
+        1. Title and introduction.
+        2. Generated image grid.
+        3. Headline statistics (p-value, observed MMD).
+        4. Full statistics table.
+        5. Permutation-test plot.
+        6. Conclusion.
     """
-    
-    # Set up the document
-    pdf_dir = Path("Reports")
-    pdf_dir.mkdir(parents=True, exist_ok=True)
-    pdf_path = pdf_dir / f"{input.report_name}.pdf"
-    doc = SimpleDocTemplate(str(pdf_path), pagesize=letter)
-    
-    # Get the style sheet
+    output_dir = _DEFAULT_OUTPUT_DIR
+    output_dir.mkdir(parents=True, exist_ok=True)
+    pdf_path = output_dir / f"{input.report_name}.pdf"
+
+    doc = SimpleDocTemplate(
+        str(pdf_path), pagesize=letter,
+        leftMargin=54, rightMargin=54, topMargin=54, bottomMargin=54,
+    )
     styles = getSampleStyleSheet()
     story = []
 
-    # Title Section
-    title = Paragraph("<b>Title of the Report</b>", styles['Title'])
-    story.append(title)
-    story.append(Spacer(1, 12))  # Space between title and introduction
+    # ---- Title ----
+    story.append(Paragraph(f"<b>{input.title}</b>", styles["Title"]))
+    story.append(Spacer(1, 18))
 
-    # Introduction Section
-    intro = Paragraph(input.text_data["introduction"], styles['Normal'])
-    story.append(intro)
-    story.append(Spacer(1, 12))
+    # ---- Introduction ----
+    story.append(Paragraph("<b>Introduction</b>", styles["Heading2"]))
+    story.append(Paragraph(input.text_data.get("introduction", ""), styles["BodyText"]))
+    story.append(Spacer(1, 14))
 
-    # Image Section
-    image_title = Paragraph("<b>Images from .pth file</b>", styles['Heading2'])
-    story.append(image_title)
-    image_desc = Paragraph(input.text_data["image_description"], styles['Normal'])
-    story.append(image_desc)
-    story.append(Spacer(1, 12))
-    
-    # Load .pth images (PyTorch tensor)
-    images_tensor = torch.load(input.gen_images_path)
-    images = images_tensor.numpy()  # Convert tensor to numpy
-    images = np.transpose(images, (0, 2, 3, 1))  # Convert to HWC format for images
-    
-    # Plotting images from the .pth file (dynamic grid)
-    num_images = len(images)
-    max_columns = 4  # Max number of columns per row
-    rows = math.ceil(num_images / max_columns)
-    
-    # Create a figure with a specific size
-    figsize = (16, 12)
-    fig, axes = plt.subplots(rows, max_columns, figsize=figsize)
-    
-    axes = axes.flatten()  # Flatten the axes array for easy iteration
-    
-    for i, ax in enumerate(axes):
-        if i < num_images:
-            img = images[i]
-            # Ensure the image is in the correct shape (H, W, C) for RGB or (H, W) for grayscale
-            if img.ndim == 3 and img.shape[2] == 1:  # If image has shape (H, W, 1), convert to (H, W)
-                img = np.squeeze(img, axis=-1)  # Remove the last dimension
-            
-            # Ensure the image values are in the range [0, 255] for uint8
-            img = np.clip(img * 255, 0, 255).astype(np.uint8)  # Scale to [0, 255] and convert to uint8
-            
-            # If the image is grayscale (2D), convert to a 3-channel format (RGB) for consistency
-            if img.ndim == 2:  # Grayscale image (H, W)
-                img = np.stack([img] * 3, axis=-1)  # Convert to (H, W, 3)
+    # ---- Generated images ----
+    story.append(Paragraph("<b>Generated samples</b>", styles["Heading2"]))
+    story.append(Paragraph(
+        input.text_data.get("image_description", ""), styles["BodyText"]
+    ))
+    story.append(Spacer(1, 8))
 
-            ax.imshow(img)
-            ax.axis('off')
-        else:
-            ax.axis('off')  # Turn off the axis for extra empty subplots
+    images_tensor = torch.load(str(input.gen_images_path), weights_only=False)
+    grid_path = _render_image_grid(images_tensor)
+    story.append(RLImage(grid_path, width=460, height=240))
+    story.append(Spacer(1, 14))
 
-    plt.tight_layout()  # Adjust the layout to avoid overlap
-    image_grid_path = 'temp_images_grid.png'
-    plt.savefig(image_grid_path, dpi=300)
-    plt.close(fig)
+    # ---- Headline result box ----
+    if input.p_value is not None and input.observed_mmd is not None:
+        story.append(Paragraph("<b>Headline result</b>", styles["Heading2"]))
+        result_data = [
+            ["Metric", "Value"],
+            ["Observed MMD²", f"{input.observed_mmd:.6g}"],
+            ["p-value", f"{input.p_value:.4f}"],
+            ["Decision (α = 0.05)",
+             "reject H₀" if input.p_value < 0.05 else "do not reject H₀"],
+        ]
+        headline = Table(result_data, colWidths=[200, 200])
+        headline.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#3b78c2")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+            ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ]))
+        story.append(headline)
+        story.append(Spacer(1, 14))
 
-    story.append(Image(image_grid_path, width=400, height=200))  # Add image grid to the story
-    story.append(Spacer(1, 12))
+    # ---- Stats table ----
+    story.append(Paragraph("<b>Permutation test statistics</b>", styles["Heading2"]))
+    story.append(Paragraph(
+        input.text_data.get("table_description", ""), styles["BodyText"]
+    ))
+    story.append(Spacer(1, 8))
 
-    # Table Section
-    table_title = Paragraph("<b>Data Table</b>", styles['Heading2'])
-    story.append(table_title)
-    
-    table_desc = Paragraph(input.text_data["table_description"], styles['Normal'])
-    story.append(table_desc)
-    story.append(Spacer(1, 12))
-
-    # Load and display the table from CSV
-    table_data = pd.read_csv(input.stats_csv)
-    table_data_rows = [list(row) for row in table_data.values]
-    table = Table(table_data_rows)
+    df = pd.read_csv(str(input.stats_csv))
+    # Limit numeric precision for readability.
+    formatted = []
+    for row in df.itertuples(index=False):
+        cells = []
+        for v in row:
+            if isinstance(v, float):
+                cells.append(f"{v:.4g}")
+            else:
+                cells.append(str(v))
+        formatted.append(cells)
+    table_data = [list(df.columns)] + formatted
+    table = Table(table_data, colWidths=[160, 120])
     table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
     ]))
     story.append(table)
-    story.append(Spacer(1, 12))
+    story.append(Spacer(1, 14))
 
-    # Plot Section
-    plot_title = Paragraph("<b>Plot Image</b>", styles['Heading2'])
-    story.append(plot_title)
-    
-    plot_desc = Paragraph(input.text_data["plot_description"], styles['Normal'])
-    story.append(plot_desc)
-    story.append(Spacer(1, 12))
-    
-    # Adding the plot image
-    plot_image = Image(str(input.plot_png), width=400, height=200)
-    story.append(plot_image)
-    
-    # Build the document
-    try:
-        doc.build(story)
-        print(f"Report saved to {str(pdf_path)}")
-    except Exception as e:
-        print(f"Error while generating PDF: {e}")
-    
-    return ReportOutput(report_path=str(pdf_path))
+    # ---- Plot ----
+    story.append(Paragraph("<b>Permutation test plot</b>", styles["Heading2"]))
+    story.append(Paragraph(
+        input.text_data.get("plot_description", ""), styles["BodyText"]
+    ))
+    story.append(Spacer(1, 8))
+    story.append(RLImage(str(input.plot_png), width=440, height=260))
+    story.append(Spacer(1, 14))
+
+    # ---- Conclusion ----
+    if input.text_data.get("conclusion"):
+        story.append(Paragraph("<b>Conclusion</b>", styles["Heading2"]))
+        story.append(Paragraph(input.text_data["conclusion"], styles["BodyText"]))
+
+    doc.build(story)
+    logger.info("Report saved to %s", pdf_path)
+
+    Path(grid_path).unlink(missing_ok=True)
+    return ReportOutput(report_path=pdf_path)

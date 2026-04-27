@@ -1,27 +1,44 @@
+"""
+Task: Generate synthetic images from a trained DDPM checkpoint.
+
+The samples are saved in the same value range as the training data
+(typically [-1, 1] when the preprocess task ran with
+``normalize_to_neg_one_one=True``). The report task rescales them for
+display.
+"""
+
+from __future__ import annotations
+
+import logging
 from pathlib import Path
-from schemas import GenerateInput, GenerateOutput
-from models.ddpm import DDPM
+
 import torch
 
+from models.ddpm import DDPM
+from schemas import GenerateInput, GenerateOutput
+
+logger = logging.getLogger(__name__)
+
+_DEFAULT_OUTPUT_DIR = Path("generated_samples")
+
+
 def generate_task(input: GenerateInput) -> GenerateOutput:
-    """
-    1. Loads trained model.
-    2. Generates synthetic images.
-    3. Stores images in a specified folder. 
-    """
-    #1. Loads trained model. 
-    model_checkpoint_path: Path = input.model_checkpoint_path
-    model = DDPM.load_from_checkpoint(str(model_checkpoint_path))
+    ckpt = Path(input.model_checkpoint_path)
+    logger.info("Loading checkpoint: %s", ckpt)
+    model = DDPM.load_from_checkpoint(str(ckpt))
+    model.eval()
 
-    #2. Generates samples.
-    samples = model.gen_sample(N = input.n_samples)
+    logger.info("Generating %d samples...", input.n_samples)
+    samples = model.gen_sample(N=input.n_samples)            # in [-1, 1]
+    samples = samples.detach().cpu()
 
-    #3. Stores samples.
-    parent_path = model_checkpoint_path.parent.parent
-    gen_images_dir = parent_path / "generated_samples"
+    output_dir = _DEFAULT_OUTPUT_DIR
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / f"{input.samples_name}.pt"
+    torch.save(samples, str(output_path))
+    logger.info(
+        "Saved %d samples to %s (range: [%.3f, %.3f])",
+        samples.size(0), output_path, samples.min().item(), samples.max().item(),
+    )
 
-    gen_images_dir.mkdir(parents= True, exist_ok= True)
-    gen_images_path = gen_images_dir / "{}.pt".format(input.samples_name)
-
-    torch.save(samples, str(gen_images_path))
-    return GenerateOutput(gen_images_path = gen_images_path)
+    return GenerateOutput(gen_images_path=output_path)

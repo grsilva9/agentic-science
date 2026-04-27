@@ -1,3 +1,5 @@
+![Pipeline overview](docs/agentic-science-flow.png)
+
 # Agentic Science
 
 An LLM-powered agent that automates the end-to-end workflow of a machine-learning researcher — from data preprocessing to a PDF report whose narrative paragraphs are written by the LLM itself — using natural-language commands.
@@ -121,17 +123,18 @@ Open `agentic_scientist.ipynb` in Colab. The notebook installs dependencies, spi
 
 ## Switching LLM backends
 
-| Backend       | env var           | API key env var       | Notes                              |
-|---------------|-------------------|-----------------------|------------------------------------|
-| `ollama`      | (default)         | —                     | Llama 3.2 3B locally.              |
-| `ollama-qwen` | `AGENT_MODEL`     | —                     | Qwen 2.5 3B locally.               |
-| `groq`        | `AGENT_MODEL`     | `GROQ_API_KEY`        | Hosted Llama 3.3 70B.              |
-| `gemini`      | `AGENT_MODEL`     | `GOOGLE_API_KEY`      | Gemini 2.0 Flash.                  |
-| `anthropic`   | `AGENT_MODEL`     | `ANTHROPIC_API_KEY`   | Claude.                            |
+| Backend       | env var           | Model              | Pull command              |
+|---------------|-------------------|--------------------|---------------------------|
+| `ollama`      | (default)         | Llama 3.2 3B       | `ollama pull llama3.2`    |
+| `ollama-qwen` | `AGENT_MODEL`     | Qwen 2.5 3B        | `ollama pull qwen2.5:3b`  |
 
 ```bash
-AGENT_MODEL=groq GROQ_API_KEY=... python agent.py --prompt "..."
+AGENT_MODEL=ollama-qwen python agent.py --prompt "..."
 ```
+
+In testing, **Qwen 2.5 handles the 10-argument `run_pipeline` orchestrator more reliably than Llama 3.2** — Llama tends to hallucinate Python code instead of emitting a tool call when faced with that many parameters. Single-tool dispatch is fine on either.
+
+The `load_models.py` module is structured to make adding other backends straightforward — see `_BUILDERS` for the extension point.
 
 ## Example prompts
 
@@ -216,7 +219,6 @@ The previous evaluation had four issues that this version fixes:
 See `requirements.txt` for the full list.
 
 ## Citations
-
 - Ho, J., Jain, A., Abbeel, P. (2020). *Denoising Diffusion Probabilistic Models*. NeurIPS.
 - Nichol, A., Dhariwal, P. (2021). *Improved Denoising Diffusion Probabilistic Models*. ICML.
 - Ma, N. et al. (2018). *ShuffleNet V2: Practical Guidelines for Efficient CNN Architecture Design*. ECCV.
